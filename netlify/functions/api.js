@@ -2,13 +2,29 @@ const fetch = require('node-fetch');
 const { google } = require('googleapis');
 const moment = require('moment-timezone');
 
-// Configuration
+// At the very top of your api.js, after the imports
 const DISCORD_API_BASE = "https://discord.com/api/v10";
+
+// Validate environment variables
 const TOKEN = process.env.DISCORD_TOKEN;
 const GUILD_ID = process.env.GUILD_ID;
 const CHANNEL_ID = process.env.CHANNEL_ID;
 const SHEET_ID = process.env.SHEET_ID;
-const GOOGLE_CREDENTIALS = JSON.parse(process.env.GOOGLE_CREDENTIALS);
+const GOOGLE_CREDENTIALS = process.env.GOOGLE_CREDENTIALS;
+
+// Validate required environment variables
+if (!TOKEN || !GUILD_ID || !CHANNEL_ID || !SHEET_ID || !GOOGLE_CREDENTIALS) {
+    throw new Error(`Missing required environment variables. 
+        TOKEN: ${!!TOKEN}, 
+        GUILD_ID: ${!!GUILD_ID}, 
+        CHANNEL_ID: ${!!CHANNEL_ID}, 
+        SHEET_ID: ${!!SHEET_ID}, 
+        GOOGLE_CREDENTIALS: ${!!GOOGLE_CREDENTIALS}`);
+}
+
+// Then parse Google credentials
+const GOOGLE_CREDS_JSON = JSON.parse(GOOGLE_CREDENTIALS);
+
 const LOCAL_TIMEZONE = "America/Los_Angeles";
 
 const HEADERS = {
