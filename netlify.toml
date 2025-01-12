@@ -1,6 +1,8 @@
 [build]
   functions = "functions"
+  publish = "public"
 
-[functions]
-  node_bundler = "esbuild"
-  external_node_modules = ["google-auth-library"]
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/:splat"
+  status = 200
