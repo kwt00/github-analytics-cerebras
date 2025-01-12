@@ -36,30 +36,29 @@ function isWeekInProgress(endDate) {
     return moment().tz(LOCAL_TIMEZONE).isBefore(endDate);
 }
 
-// API Request Handler
-async function makeDiscordRequest(endpoint, method = "GET", ignore403 = false) {
+async function makeDiscordRequest(endpoint) {
     const url = `${DISCORD_API_BASE}${endpoint}`;
+    console.log('Making request to:', url);
     
-    while (true) {
-        const response = await fetch(url, { method, headers: HEADERS });
-        
-        if (response.status === 429) {
-            const data = await response.json();
-            const retryAfter = data.retry_after;
-            console.log(`Rate limited. Waiting ${retryAfter} seconds...`);
-            await new Promise(resolve => setTimeout(resolve, retryAfter * 1000));
-            continue;
-        }
-        
-        if (response.status === 403 && ignore403) {
-            return null;
-        }
-        
+    try {
+        const response = await fetch(url, {
+            method: 'GET',
+            headers: HEADERS,
+            timeout: 8000 // 8 second timeout
+        });
+
         if (!response.ok) {
-            throw new Error(`Discord API Error: ${response.status} ${response.statusText}`);
+            console.error('Discord API error:', {
+                status: response.status,
+                statusText: response.statusText
+            });
+            throw new Error(`Discord API returned ${response.status}`);
         }
-        
+
         return await response.json();
+    } catch (error) {
+        console.error('Request failed:', error);
+        throw error;
     }
 }
 
@@ -238,39 +237,17 @@ async function updateGoogleSheet(auth, weekRange, metrics) {
 // ... (keep all the existing imports and config)
 
 exports.handler = async function(event, context) {
-    if (event.httpMethod === 'OPTIONS') {
-        return { statusCode: 200 };
-    }
-
     if (event.httpMethod === 'POST') {
         try {
-            const { weekRange } = JSON.parse(event.body);
-            if (!weekRange) {
-                return {
-                    statusCode: 400,
-                    body: JSON.stringify({ error: 'Week range is required' })
-                };
-            }
-
-            const { startDate, endDate } = parseDateRange(weekRange);
-            
-            // Collect all metrics
-            const metrics = {
-                totalMembers: await getTotalMembers(endDate),
-                newMembers: await getNewMembers(startDate, endDate),
-                activeUsers: await getActiveUsers(startDate, endDate),
-                messagesPosted: await getMessagesPosted(startDate, endDate),
-                reactions: await getReactions(startDate, endDate),
-                projectLinks: await getProjectLinks(startDate, endDate)
-            };
-            
-            metrics.projectsShowcased = metrics.projectLinks.length;
+            // Test Discord connection first
+            const botUser = await makeDiscordRequest('/users/@me');
+            console.log('Connected as:', botUser.username);
 
             return {
                 statusCode: 200,
                 body: JSON.stringify({
-                    message: 'Analytics collection completed successfully',
-                    metrics: metrics
+                    message: 'Connected successfully',
+                    botName: botUser.username
                 })
             };
 
@@ -278,7 +255,10 @@ exports.handler = async function(event, context) {
             console.error('Error:', error);
             return {
                 statusCode: 500,
-                body: JSON.stringify({ error: error.message })
+                body: JSON.stringify({ 
+                    error: error.message,
+                    details: 'Connection test failed'
+                })
             };
         }
     }
