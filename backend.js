@@ -233,53 +233,41 @@ async function updateGoogleSheet(auth, weekRange, metrics) {
     });
 }
 
+// functions/discord-analytics.js
+
+// ... (keep all the existing imports and config)
+
 exports.handler = async function(event, context) {
+    // CORS headers
+    const headers = {
+        'Access-Control-Allow-Origin': '*', // Or your specific domain
+        'Access-Control-Allow-Headers': 'Content-Type',
+        'Access-Control-Allow-Methods': 'POST, OPTIONS'
+    };
+
+    // Handle preflight requests
+    if (event.httpMethod === 'OPTIONS') {
+        return {
+            statusCode: 200,
+            headers,
+            body: ''
+        };
+    }
+
     try {
-        // Only allow POST requests
         if (event.httpMethod !== 'POST') {
             return {
                 statusCode: 405,
+                headers,
                 body: JSON.stringify({ error: 'Method not allowed' })
             };
         }
 
-        // Parse the incoming request body
-        const { weekRange } = JSON.parse(event.body);
-        if (!weekRange) {
-            return {
-                statusCode: 400,
-                body: JSON.stringify({ error: 'Week range is required' })
-            };
-        }
-
-        // Test Discord connection
-        const botUser = await makeDiscordRequest('/users/@me');
-        console.log(`Connected as bot: ${botUser.username}`);
-
-        const { startDate, endDate } = parseDateRange(weekRange);
-        
-        // Collect metrics
-        const metrics = {
-            totalMembers: await getTotalMembers(endDate),
-            newMembers: await getNewMembers(startDate, endDate),
-            activeUsers: await getActiveUsers(startDate, endDate),
-            messagesPosted: await getMessagesPosted(startDate, endDate),
-            reactions: await getReactions(startDate, endDate),
-            projectLinks: await getProjectLinks(startDate, endDate)
-        };
-        
-        metrics.projectsShowcased = metrics.projectLinks.length;
-
-        // Initialize Google Sheets auth
-        const auth = new google.auth.GoogleAuth({
-            credentials: GOOGLE_CREDENTIALS,
-            scopes: ['https://www.googleapis.com/auth/spreadsheets']
-        });
-
-        await updateGoogleSheet(auth, weekRange, metrics);
+        // ... (rest of your existing function code)
 
         return {
             statusCode: 200,
+            headers,
             body: JSON.stringify({
                 message: 'Analytics collection completed successfully',
                 metrics
@@ -290,6 +278,7 @@ exports.handler = async function(event, context) {
         console.error('Error:', error);
         return {
             statusCode: 500,
+            headers,
             body: JSON.stringify({ error: error.message })
         };
     }
