@@ -239,15 +239,40 @@ async function updateGoogleSheet(auth, weekRange, metrics) {
 exports.handler = async function(event, context) {
     if (event.httpMethod === 'POST') {
         try {
-            // Test Discord connection first
+            const { weekRange } = JSON.parse(event.body);
+            if (!weekRange) {
+                return {
+                    statusCode: 400,
+                    body: JSON.stringify({ error: 'Week range is required' })
+                };
+            }
+
+            // Test connection
             const botUser = await makeDiscordRequest('/users/@me');
             console.log('Connected as:', botUser.username);
+
+            // Parse dates
+            const { startDate, endDate } = parseDateRange(weekRange);
+            
+            // Collect metrics one by one
+            const metrics = {};
+
+            // Start with just project links since that's the main focus
+            console.log('Getting project links...');
+            const messages = await getChannelMessages(CHANNEL_ID, startDate, endDate);
+            metrics.messagesInShowcase = messages.length;
+            
+            // Extract project links
+            const projectLinks = await getProjectLinks(startDate, endDate);
+            metrics.projectLinks = projectLinks;
+            metrics.projectsShowcased = projectLinks.length;
 
             return {
                 statusCode: 200,
                 body: JSON.stringify({
-                    message: 'Connected successfully',
-                    botName: botUser.username
+                    message: 'Analytics collection completed',
+                    botName: botUser.username,
+                    metrics: metrics
                 })
             };
 
@@ -257,7 +282,7 @@ exports.handler = async function(event, context) {
                 statusCode: 500,
                 body: JSON.stringify({ 
                     error: error.message,
-                    details: 'Connection test failed'
+                    details: 'Failed during metrics collection'
                 })
             };
         }
