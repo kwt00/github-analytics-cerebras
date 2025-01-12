@@ -1,9 +1,6 @@
-const express = require('express');
-const app = express();
 const fetch = require('node-fetch');
 const { google } = require('googleapis');
 const moment = require('moment-timezone');
-const cors = require('cors');
 
 // Configuration
 const DISCORD_API_BASE = "https://discord.com/api/v10";
@@ -19,14 +16,6 @@ const HEADERS = {
     'User-Agent': 'DiscordBot (discord-analytics-bot, 1.0.0)',
     'Content-Type': 'application/json'
 };
-
-app.use(cors({
-    origin: '*',
-    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
-    allowedHeaders: ['Content-Type', 'Authorization'],
-}));
-
-app.use(express.json());
 
 // Helper Functions
 function adjustToLocalTime(utcTimeStr) {
@@ -48,7 +37,6 @@ function isWeekInProgress(endDate) {
     return moment().tz(LOCAL_TIMEZONE).isBefore(endDate);
 }
 
-// Discord API Functions
 async function makeDiscordRequest(endpoint, method = "GET", ignore403 = false) {
     const url = `${DISCORD_API_BASE}${endpoint}`;
     console.log(`Making request to: ${url}`);
@@ -74,6 +62,40 @@ async function makeDiscordRequest(endpoint, method = "GET", ignore403 = false) {
         
         return await response.json();
     }
+}
+
+async function getTotalMembers(endDate) {
+    const guildData = await makeDiscordRequest(`/guilds/${GUILD_ID}?with_counts=true`);
+    return guildData.approximate_member_count;
+}
+
+async function getAllMembers() {
+    let members = [];
+    let after = '0';
+    
+    while (true) {
+        const endpoint = `/guilds/${GUILD_ID}/members?limit=1000${after !== '0' ? `&after=${after}` : ''}`;
+        const batch = await makeDiscordRequest(endpoint);
+        
+        if (!batch || batch.length === 0) break;
+        
+        members = members.concat(batch);
+        
+        if (batch.length < 1000) break;
+        
+        after = batch[batch.length - 1].user.id;
+        await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+    
+    return members;
+}
+
+async function getNewMembers(startDate, endDate) {
+    const members = await getAllMembers();
+    return members.filter(member => {
+        const joinedAt = adjustToLocalTime(member.joined_at);
+        return joinedAt.isSameOrAfter(startDate) && joinedAt.isSameOrBefore(endDate);
+    }).length;
 }
 
 async function getChannelMessages(channelId, startDate, endDate) {
@@ -108,75 +130,6 @@ async function getChannelMessages(channelId, startDate, endDate) {
     return messages;
 }
 
-async function getAllMembers() {
-    let members = [];
-    let after = '0';
-    
-    while (true) {
-        const endpoint = `/guilds/${GUILD_ID}/members?limit=1000${after !== '0' ? `&after=${after}` : ''}`;
-        const batch = await makeDiscordRequest(endpoint);
-        
-        if (!batch || batch.length === 0) break;
-        
-        members = members.concat(batch);
-        
-        if (batch.length < 1000) break;
-        
-        after = batch[batch.length - 1].user.id;
-        await new Promise(resolve => setTimeout(resolve, 1000));
-    }
-    
-    return members;
-}
-
-async function getTotalMembers(endDate) {
-    const weekInProgress = isWeekInProgress(endDate);
-    
-    if (weekInProgress) {
-        const guildData = await makeDiscordRequest(`/guilds/${GUILD_ID}?with_counts=true`);
-        return guildData.approximate_member_count;
-    }
-    
-    const members = await getAllMembers();
-    return members.filter(member => 
-        adjustToLocalTime(member.joined_at).isSameOrBefore(endDate)
-    ).length;
-}
-
-async function getNewMembers(startDate, endDate) {
-    const members = await getAllMembers();
-    return members.filter(member => {
-        const joinedAt = adjustToLocalTime(member.joined_at);
-        return joinedAt.isSameOrAfter(startDate) && joinedAt.isSameOrBefore(endDate);
-    }).length;
-}
-
-async function getMessagesPosted(startDate, endDate) {
-    const channels = await makeDiscordRequest(`/guilds/${GUILD_ID}/channels`);
-    const textChannels = channels.filter(channel => channel.type === 0);
-    let messagesPosted = 0;
-    
-    for (const channel of textChannels) {
-        const messages = await getChannelMessages(channel.id, startDate, endDate);
-        messagesPosted += messages.length;
-    }
-    
-    return messagesPosted;
-}
-
-async function getActiveUsers(startDate, endDate) {
-    const channels = await makeDiscordRequest(`/guilds/${GUILD_ID}/channels`);
-    const textChannels = channels.filter(channel => channel.type === 0);
-    const activeUsers = new Set();
-    
-    for (const channel of textChannels) {
-        const messages = await getChannelMessages(channel.id, startDate, endDate);
-        messages.forEach(msg => activeUsers.add(msg.author.id));
-    }
-    
-    return activeUsers.size;
-}
-
 async function getReactions(startDate, endDate) {
     const channels = await makeDiscordRequest(`/guilds/${GUILD_ID}/channels`);
     const textChannels = channels.filter(channel => channel.type === 0);
@@ -209,7 +162,32 @@ async function getProjectLinks(startDate, endDate) {
     return Array.from(projectLinks);
 }
 
-// Google Sheets Integration
+async function getMessagesPosted(startDate, endDate) {
+    const channels = await makeDiscordRequest(`/guilds/${GUILD_ID}/channels`);
+    const textChannels = channels.filter(channel => channel.type === 0);
+    let messagesPosted = 0;
+    
+    for (const channel of textChannels) {
+        const messages = await getChannelMessages(channel.id, startDate, endDate);
+        messagesPosted += messages.length;
+    }
+    
+    return messagesPosted;
+}
+
+async function getActiveUsers(startDate, endDate) {
+    const channels = await makeDiscordRequest(`/guilds/${GUILD_ID}/channels`);
+    const textChannels = channels.filter(channel => channel.type === 0);
+    const activeUsers = new Set();
+    
+    for (const channel of textChannels) {
+        const messages = await getChannelMessages(channel.id, startDate, endDate);
+        messages.forEach(msg => activeUsers.add(msg.author.id));
+    }
+    
+    return activeUsers.size;
+}
+
 async function updateGoogleSheet(weekRange, metrics) {
     const auth = new google.auth.GoogleAuth({
         credentials: GOOGLE_CREDENTIALS,
@@ -248,23 +226,41 @@ async function updateGoogleSheet(weekRange, metrics) {
     });
 }
 
-// Server endpoints
-app.get('/health', (req, res) => {
-    res.json({ status: 'ok' });
-});
+exports.handler = async function(event, context) {
+    // Handle CORS
+    const headers = {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Headers': 'Content-Type',
+        'Access-Control-Allow-Methods': 'POST, OPTIONS'
+    };
 
-app.post('/collect-analytics', async (req, res) => {
+    // Handle preflight requests
+    if (event.httpMethod === 'OPTIONS') {
+        return { statusCode: 200, headers, body: '' };
+    }
+
+    if (event.httpMethod !== 'POST') {
+        return {
+            statusCode: 405,
+            headers,
+            body: JSON.stringify({ error: 'Method not allowed' })
+        };
+    }
+
     try {
-        const { weekRange } = req.body;
+        const { weekRange } = JSON.parse(event.body);
         
         if (!weekRange) {
-            return res.status(400).json({ error: 'Week range is required' });
+            return {
+                statusCode: 400,
+                headers,
+                body: JSON.stringify({ error: 'Week range is required' })
+            };
         }
 
         console.log('Starting analytics collection for:', weekRange);
         const { startDate, endDate } = parseDateRange(weekRange);
         
-        // Collect metrics
         const metrics = {
             totalMembers: await getTotalMembers(endDate),
             newMembers: await getNewMembers(startDate, endDate),
@@ -276,22 +272,23 @@ app.post('/collect-analytics', async (req, res) => {
         
         metrics.projectsShowcased = metrics.projectLinks.length;
         
-        // Update Google Sheet
         await updateGoogleSheet(weekRange, metrics);
         
-        res.json({
-            message: 'Analytics collection completed successfully',
-            metrics
-        });
+        return {
+            statusCode: 200,
+            headers,
+            body: JSON.stringify({
+                message: 'Analytics collection completed successfully',
+                metrics
+            })
+        };
         
     } catch (error) {
         console.error('Error:', error);
-        res.status(500).json({ error: error.message });
+        return {
+            statusCode: 500,
+            headers,
+            body: JSON.stringify({ error: error.message })
+        };
     }
-});
-
-
-
-const serverless = require('serverless-http');
-const handler = serverless(app);
-module.exports = { handler };
+};
