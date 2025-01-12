@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Analytics Collector</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 20px;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 10px;
+            border: 1px solid #ccc;
+            white-space: pre-wrap;
+        }
+        .error { color: red; }
+        .success { color: green; }
+        button { padding: 10px 20px; margin: 10px 0; }
+        input { padding: 5px; width: 300px; }
+    </style>
+</head>
+<body>
+    <h1>Discord Analytics Collector</h1>
+    
+    <input type="text" id="weekRange" placeholder="Feb 1 2024 - Feb 29 2024">
+    <button onclick="collectAnalytics()">Collect Analytics</button>
+    
+    <div id="result" class="result"></div>
+
+    <script>
+        // You'll update this URL after deploying to Railway
+        const API_URL = 'https://your-app-name.railway.app/collect-analytics';
+
+        async function collectAnalytics() {
+            const weekRange = document.getElementById('weekRange').value;
+            const resultDiv = document.getElementById('result');
+            
+            if (!weekRange) {
+                alert('Please enter a week range');
+                return;
+            }
+
+            resultDiv.textContent = 'Starting analytics collection...';
+            
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ weekRange })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+                resultDiv.textContent = 'Analytics collection started. Check logs and Google Sheet for results.';
+                
+            } catch (error) {
+                resultDiv.textContent = `Error: ${error.message}`;
+                console.error('Error:', error);
+            }
+        }
+    </script>
+</body>
+</html>
