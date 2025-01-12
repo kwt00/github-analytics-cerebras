@@ -240,19 +240,18 @@ async function updateGoogleSheet(auth, weekRange, metrics) {
 exports.handler = async function(event, context) {
     // CORS headers
     const corsHeaders = {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-        'Access-Control-Max-Age': '2592000',
-        'Content-Type': 'application/json'
+        'Access-Control-Allow-Origin': '*',  // Specifically allow localhost
+        'Access-Control-Allow-Methods': 'POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type',
+        'Access-Control-Max-Age': '86400'
     };
 
     // Handle preflight requests
     if (event.httpMethod === 'OPTIONS') {
         return {
-            statusCode: 200,
+            statusCode: 200,  // Changed from 204 to 200
             headers: corsHeaders,
-            body: ''
+            body: JSON.stringify({ message: 'Preflight call successful' })  // Added body
         };
     }
 
