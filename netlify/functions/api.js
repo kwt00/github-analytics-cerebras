@@ -243,14 +243,15 @@ async function updateGoogleSheet(weekRange, metrics) {
 }
 
 exports.handler = async function(event, context) {
-    // Handle CORS
+    // Tells Lambda to keep running after returning response
+    context.callbackWaitsForEmptyEventLoop = false;
+    
     const headers = {
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Headers': 'Content-Type',
         'Access-Control-Allow-Methods': 'POST, OPTIONS'
     };
 
-    // Handle preflight requests
     if (event.httpMethod === 'OPTIONS') {
         return { statusCode: 200, headers, body: '' };
     }
@@ -274,28 +275,36 @@ exports.handler = async function(event, context) {
             };
         }
 
-        console.log('Starting analytics collection for:', weekRange);
-        const { startDate, endDate } = parseDateRange(weekRange);
-        
-        const metrics = {
-            totalMembers: await getTotalMembers(endDate),
-            newMembers: await getNewMembers(startDate, endDate),
-            activeUsers: await getActiveUsers(startDate, endDate),
-            messagesPosted: await getMessagesPosted(startDate, endDate),
-            reactions: await getReactions(startDate, endDate),
-            projectLinks: await getProjectLinks(startDate, endDate)
-        };
-        
-        metrics.projectsShowcased = metrics.projectLinks.length;
-        
-        await updateGoogleSheet(weekRange, metrics);
-        
+        // Start processing in background
+        (async () => {
+            try {
+                console.log('Starting analytics collection for:', weekRange);
+                const { startDate, endDate } = parseDateRange(weekRange);
+                
+                const metrics = {
+                    totalMembers: await getTotalMembers(endDate),
+                    newMembers: await getNewMembers(startDate, endDate),
+                    activeUsers: await getActiveUsers(startDate, endDate),
+                    messagesPosted: await getMessagesPosted(startDate, endDate),
+                    reactions: await getReactions(startDate, endDate),
+                    projectLinks: await getProjectLinks(startDate, endDate)
+                };
+                
+                metrics.projectsShowcased = metrics.projectLinks.length;
+                
+                await updateGoogleSheet(weekRange, metrics);
+                console.log('Analytics collection completed successfully!');
+            } catch (error) {
+                console.error('Background process error:', error);
+            }
+        })();
+
+        // Return immediate response
         return {
             statusCode: 200,
             headers,
             body: JSON.stringify({
-                message: 'Analytics collection completed successfully',
-                metrics
+                message: 'Analytics collection started in background'
             })
         };
         
