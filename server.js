@@ -11,7 +11,7 @@ app.use(express.json());
 
 // Configuration with validation
 const DISCORD_API_BASE = "https://discord.com/api/v10";
-const TOKEN = process.env.DISCORD_TOKEN;
+const TOKEN = process.env.TOKEN;
 const GUILD_ID = process.env.GUILD_ID;
 const CHANNEL_ID = process.env.CHANNEL_ID;
 const SHEET_ID = process.env.SHEET_ID;
