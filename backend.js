@@ -238,49 +238,36 @@ async function updateGoogleSheet(auth, weekRange, metrics) {
 // ... (keep all the existing imports and config)
 
 exports.handler = async function(event, context) {
-    // CORS headers
-    const corsHeaders = {
-        'Access-Control-Allow-Origin': '*',  // Specifically allow localhost
-        'Access-Control-Allow-Methods': 'POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type',
-        'Access-Control-Max-Age': '86400'
-    };
+    // Just handle the POST request
+    if (event.httpMethod === 'POST') {
+        try {
+            const { weekRange } = JSON.parse(event.body);
+            // ... rest of your code ...
 
-    // Handle preflight requests
-    if (event.httpMethod === 'OPTIONS') {
-        return {
-            statusCode: 200,  // Changed from 204 to 200
-            headers: corsHeaders,
-            body: JSON.stringify({ message: 'Preflight call successful' })  // Added body
-        };
-    }
-
-    try {
-        if (event.httpMethod !== 'POST') {
             return {
-                statusCode: 405,
-                headers: corsHeaders,
-                body: JSON.stringify({ error: 'Method not allowed' })
+                statusCode: 200,
+                body: JSON.stringify({
+                    message: 'Analytics collection completed successfully',
+                    metrics
+                })
+            };
+        } catch (error) {
+            return {
+                statusCode: 500,
+                body: JSON.stringify({ error: error.message })
             };
         }
+    }
 
-        // ... (rest of your existing function code)
-
+    // Return 200 for OPTIONS
+    if (event.httpMethod === 'OPTIONS') {
         return {
-            statusCode: 200,
-            headers: corsHeaders,
-            body: JSON.stringify({
-                message: 'Analytics collection completed successfully',
-                metrics
-            })
-        };
-
-    } catch (error) {
-        console.error('Error:', error);
-        return {
-            statusCode: 500,
-            headers: corsHeaders,
-            body: JSON.stringify({ error: error.message })
+            statusCode: 200
         };
     }
+
+    return {
+        statusCode: 405,
+        body: JSON.stringify({ error: 'Method not allowed' })
+    };
 };
