@@ -239,17 +239,19 @@ async function updateGoogleSheet(auth, weekRange, metrics) {
 
 exports.handler = async function(event, context) {
     // CORS headers
-    const headers = {
-        'Access-Control-Allow-Origin': '*', // Or your specific domain
-        'Access-Control-Allow-Headers': 'Content-Type',
-        'Access-Control-Allow-Methods': 'POST, OPTIONS'
+    const corsHeaders = {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+        'Access-Control-Max-Age': '2592000',
+        'Content-Type': 'application/json'
     };
 
     // Handle preflight requests
     if (event.httpMethod === 'OPTIONS') {
         return {
             statusCode: 200,
-            headers,
+            headers: corsHeaders,
             body: ''
         };
     }
@@ -258,7 +260,7 @@ exports.handler = async function(event, context) {
         if (event.httpMethod !== 'POST') {
             return {
                 statusCode: 405,
-                headers,
+                headers: corsHeaders,
                 body: JSON.stringify({ error: 'Method not allowed' })
             };
         }
@@ -267,7 +269,7 @@ exports.handler = async function(event, context) {
 
         return {
             statusCode: 200,
-            headers,
+            headers: corsHeaders,
             body: JSON.stringify({
                 message: 'Analytics collection completed successfully',
                 metrics
@@ -278,7 +280,7 @@ exports.handler = async function(event, context) {
         console.error('Error:', error);
         return {
             statusCode: 500,
-            headers,
+            headers: corsHeaders,
             body: JSON.stringify({ error: error.message })
         };
     }
