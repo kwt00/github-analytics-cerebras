@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Discord Analytics Tester</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 20px;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 10px;
+            border: 1px solid #ccc;
+            background: #f9f9f9;
+            white-space: pre-wrap;
+        }
+        .error { color: red; }
+        .success { color: green; }
+        button { padding: 10px 20px; margin: 10px 0; }
+        input { padding: 5px; width: 300px; }
+    </style>
+</head>
+<body>
+    <h1>Discord Analytics Tester</h1>
+    
+    <div>
+        <input type="text" id="weekRange" placeholder="Feb 1 2024 - Feb 29 2024">
+        <button onclick="collectAnalytics()">Collect Analytics</button>
+    </div>
+    
+    <div>
+        <h3>Status: <span id="status">Ready</span></h3>
+    </div>
+    
+    <div id="result" class="result"></div>
+
+    <script>
+        function collectAnalytics() {
+            const weekRange = document.getElementById('weekRange').value;
+            const statusEl = document.getElementById('status');
+            const resultEl = document.getElementById('result');
+
+            if (!weekRange) {
+                alert('Please enter a week range');
+                return;
+            }
+
+            statusEl.textContent = 'Collecting data...';
+            statusEl.className = '';
+            
+            fetch('/api/discord-analytics', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ weekRange })
+            })
+            .then(response => response.json())
+            .then(data => {
+                statusEl.textContent = 'Success!';
+                statusEl.className = 'success';
+                resultEl.textContent = JSON.stringify(data, null, 2);
+            })
+            .catch(error => {
+                statusEl.textContent = 'Error!';
+                statusEl.className = 'error';
+                resultEl.textContent = `Error: ${error.message}`;
+                console.error('Error:', error);
+            });
+        }
+    </script>
+</body>
+</html>
