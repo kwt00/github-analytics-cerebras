@@ -20,9 +20,13 @@ const HEADERS = {
     'Content-Type': 'application/json'
 };
 
-// Express setup
+app.use(cors({
+    origin: '*',
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+    allowedHeaders: ['Content-Type', 'Authorization'],
+}));
+
 app.use(express.json());
-app.use(cors());
 
 // Helper Functions
 function adjustToLocalTime(utcTimeStr) {
@@ -286,32 +290,8 @@ app.post('/collect-analytics', async (req, res) => {
     }
 });
 
-// Export for Netlify Functions
-exports.handler = async (event, context) => {
-    // Handle CORS
-    if (event.httpMethod === 'OPTIONS') {
-        return {
-            statusCode: 200,
-            headers: {
-                'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Headers': 'Content-Type',
-                'Access-Control-Allow-Methods': 'GET, POST, OPTIONS'
-            }
-        };
-    }
 
-    // Create Express app wrapper
-    const handler = express();
-    handler.use('/.netlify/functions/api', app);
-    
-    return new Promise((resolve, reject) => {
-        const callback = (err, response) => {
-            if (err) {
-                return reject(err);
-            }
-            resolve(response);
-        };
-        
-        handler(event, context, callback);
-    });
-};
+
+const serverless = require('serverless-http');
+const handler = serverless(app);
+module.exports = { handler };
