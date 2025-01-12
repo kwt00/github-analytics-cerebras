@@ -238,32 +238,49 @@ async function updateGoogleSheet(auth, weekRange, metrics) {
 // ... (keep all the existing imports and config)
 
 exports.handler = async function(event, context) {
-    // Just handle the POST request
+    if (event.httpMethod === 'OPTIONS') {
+        return { statusCode: 200 };
+    }
+
     if (event.httpMethod === 'POST') {
         try {
             const { weekRange } = JSON.parse(event.body);
-            // ... rest of your code ...
+            if (!weekRange) {
+                return {
+                    statusCode: 400,
+                    body: JSON.stringify({ error: 'Week range is required' })
+                };
+            }
+
+            const { startDate, endDate } = parseDateRange(weekRange);
+            
+            // Collect all metrics
+            const metrics = {
+                totalMembers: await getTotalMembers(endDate),
+                newMembers: await getNewMembers(startDate, endDate),
+                activeUsers: await getActiveUsers(startDate, endDate),
+                messagesPosted: await getMessagesPosted(startDate, endDate),
+                reactions: await getReactions(startDate, endDate),
+                projectLinks: await getProjectLinks(startDate, endDate)
+            };
+            
+            metrics.projectsShowcased = metrics.projectLinks.length;
 
             return {
                 statusCode: 200,
                 body: JSON.stringify({
                     message: 'Analytics collection completed successfully',
-                    metrics
+                    metrics: metrics
                 })
             };
+
         } catch (error) {
+            console.error('Error:', error);
             return {
                 statusCode: 500,
                 body: JSON.stringify({ error: error.message })
             };
         }
-    }
-
-    // Return 200 for OPTIONS
-    if (event.httpMethod === 'OPTIONS') {
-        return {
-            statusCode: 200
-        };
     }
 
     return {
