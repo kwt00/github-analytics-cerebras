@@ -1,13 +1,14 @@
 [build]
   functions = "functions"
 
+[functions]
+  node_bundler = "esbuild"
+  external_node_modules = ["google-auth-library"]
+
 [[headers]]
   for = "/*"
     [headers.values]
     Access-Control-Allow-Origin = "*"
-    Access-Control-Allow-Methods = "GET, POST, OPTIONS"
-    Access-Control-Allow-Headers = "Origin, X-Requested-With, Content-Type, Accept"
-
-[functions]
-  node_bundler = "esbuild"
-  external_node_modules = ["google-auth-library"]
+    Access-Control-Allow-Methods = "POST, OPTIONS"
+    Access-Control-Allow-Headers = "Content-Type"
+    Access-Control-Max-Age = "86400"
