@@ -232,10 +232,6 @@ async function updateGoogleSheet(auth, weekRange, metrics) {
     });
 }
 
-// functions/discord-analytics.js
-
-// ... (keep all the existing imports and config)
-
 exports.handler = async function(event, context) {
     if (event.httpMethod === 'POST') {
         try {
@@ -247,31 +243,52 @@ exports.handler = async function(event, context) {
                 };
             }
 
-            // Test connection
-            const botUser = await makeDiscordRequest('/users/@me');
-            console.log('Connected as:', botUser.username);
-
-            // Parse dates
+            console.log('Starting analytics collection for:', weekRange);
             const { startDate, endDate } = parseDateRange(weekRange);
             
-            // Collect metrics one by one
+            // Initialize metrics
             const metrics = {};
 
-            // Start with just project links since that's the main focus
-            console.log('Getting project links...');
-            const messages = await getChannelMessages(CHANNEL_ID, startDate, endDate);
-            metrics.messagesInShowcase = messages.length;
+            // Get channel list once to reuse
+            console.log('Fetching channels...');
+            const channels = await makeDiscordRequest(`/guilds/${GUILD_ID}/channels`);
+            const textChannels = channels.filter(channel => channel.type === 0);
+
+            // Project links from showcase channel
+            console.log('Getting showcase data...');
+            const showcaseMessages = await getChannelMessages(CHANNEL_ID, startDate, endDate);
+            metrics.projectLinks = getProjectLinks(showcaseMessages); // Process existing messages
+            metrics.projectsShowcased = metrics.projectLinks.length;
+
+            // Message and user activity
+            console.log('Getting message activity...');
+            let totalMessages = 0;
+            const activeUsers = new Set();
+
+            for (const channel of textChannels) {
+                const messages = await getChannelMessages(channel.id, startDate, endDate);
+                totalMessages += messages.length;
+                messages.forEach(msg => {
+                    if (msg.author && msg.author.id) {
+                        activeUsers.add(msg.author.id);
+                    }
+                });
+            }
             
-            // Extract project links
-            const projectLinks = await getProjectLinks(startDate, endDate);
-            metrics.projectLinks = projectLinks;
-            metrics.projectsShowcased = projectLinks.length;
+            metrics.messagesPosted = totalMessages;
+            metrics.activeUsers = activeUsers.size;
+
+            // Get guild info
+            console.log('Getting guild info...');
+            const guildData = await makeDiscordRequest(`/guilds/${GUILD_ID}?with_counts=true`);
+            metrics.totalMembers = guildData.approximate_member_count;
+
+            // Not calculating new members yet as it requires more API calls
 
             return {
                 statusCode: 200,
                 body: JSON.stringify({
                     message: 'Analytics collection completed',
-                    botName: botUser.username,
                     metrics: metrics
                 })
             };
@@ -293,3 +310,4 @@ exports.handler = async function(event, context) {
         body: JSON.stringify({ error: 'Method not allowed' })
     };
 };
+
