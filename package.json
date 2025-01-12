@@ -1,0 +1,9 @@
+{
+    "name": "discord-analytics",
+    "version": "1.0.0",
+    "dependencies": {
+      "node-fetch": "^2.6.9",
+      "googleapis": "^118.0.0",
+      "moment-timezone": "^0.5.43"
+    }
+}
