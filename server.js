@@ -1,3 +1,4 @@
+// At the top of server.js, right after imports
 const express = require('express');
 const fetch = require('node-fetch');
 const { google } = require('googleapis');
@@ -8,21 +9,47 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Configuration
+// Configuration with validation
 const DISCORD_API_BASE = "https://discord.com/api/v10";
 const TOKEN = process.env.DISCORD_TOKEN;
 const GUILD_ID = process.env.GUILD_ID;
 const CHANNEL_ID = process.env.CHANNEL_ID;
 const SHEET_ID = process.env.SHEET_ID;
-const GOOGLE_CREDENTIALS = JSON.parse(process.env.GOOGLE_CREDENTIALS);
+
+// Validate required environment variables
+if (!TOKEN) {
+    throw new Error('DISCORD_TOKEN is required');
+}
+if (!GUILD_ID) {
+    throw new Error('GUILD_ID is required');
+}
+if (!CHANNEL_ID) {
+    throw new Error('CHANNEL_ID is required');
+}
+if (!SHEET_ID) {
+    throw new Error('SHEET_ID is required');
+}
+
+// Parse Google credentials with error handling
+let GOOGLE_CREDENTIALS;
+try {
+    GOOGLE_CREDENTIALS = process.env.GOOGLE_CREDENTIALS ? 
+        JSON.parse(process.env.GOOGLE_CREDENTIALS) : null;
+    if (!GOOGLE_CREDENTIALS) {
+        throw new Error('GOOGLE_CREDENTIALS is required');
+    }
+} catch (error) {
+    throw new Error(`Invalid GOOGLE_CREDENTIALS: ${error.message}`);
+}
+
 const LOCAL_TIMEZONE = "America/Los_Angeles";
 
+// Make sure Bot prefix is included in token
 const HEADERS = {
-    'Authorization': `Bot ${TOKEN}`,
+    'Authorization': TOKEN.startsWith('Bot ') ? TOKEN : `Bot ${TOKEN}`,
     'User-Agent': 'DiscordBot (discord-analytics-bot, 1.0.0)',
     'Content-Type': 'application/json'
 };
-
 // Helper Functions
 function adjustToLocalTime(utcTimeStr) {
     return moment(utcTimeStr).tz(LOCAL_TIMEZONE);
