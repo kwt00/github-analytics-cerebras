@@ -116,7 +116,7 @@ async function getAllMembers() {
     let after = '0';
     
     while (true) {
-        const endpoint = `/guilds/${GUILD_ID}/members?limit=None${after !== '0' ? `&after=${after}` : ''}`;
+        const endpoint = `/guilds/${GUILD_ID}/members?limit=1000${after !== '0' ? `&after=${after}` : ''}`;
         const batch = await makeDiscordRequest(endpoint);
         
         if (!batch || batch.length === 0) break;
@@ -151,7 +151,7 @@ async function getChannelMessages(channelId, startDate, endDate) {
     
     while (true) {
         try {
-            const endpoint = `/channels/${channelId}/messages?limit=None${before ? `&before=${before}` : ''}`;
+            const endpoint = `/channels/${channelId}/messages?limit=1000${before ? `&before=${before}` : ''}`;
             const batch = await makeDiscordRequest(endpoint, "GET", true);
             
             if (!batch) return [];
