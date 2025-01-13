@@ -181,7 +181,7 @@ async function getHistoricalMemberCount(endDate) {
     return historicalCount;
 }
 
-async function getTotalMembers(endDate) {
+async function getTotalMembers(startDate, endDate) {
 
     try {
         const allMembers = await getAllGuildMembers();
@@ -474,7 +474,7 @@ app.post('/collect-analytics', async (req, res) => {
         const { startDate, endDate } = parseDateRange(weekRange);
 
         const [totalMembers, newMembers] = await Promise.all([
-            getTotalMembers(endDate),
+            getTotalMembers(startDate, endDate),
             getNewMembers(startDate, endDate)
         ]);
 
