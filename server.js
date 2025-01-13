@@ -99,8 +99,10 @@ async function makeDiscordRequest(endpoint, method = "GET", ignore403 = false) {
 }
 
 async function getTotalMembers(endDate) {
-    const guildData = await makeDiscordRequest(`/guilds/${GUILD_ID}?with_counts=true`);
-    return guildData.approximate_member_count;
+    const members = await getAllMembers();
+    return members.filter(member => 
+        adjustToLocalTime(member.joined_at).isSameOrBefore(endDate)
+    ).length;
 }
 
 async function getAllMembers() {
@@ -230,34 +232,48 @@ async function updateGoogleSheet(weekRange, metrics) {
 
     const sheets = google.sheets({ version: 'v4', auth });
     
+    // Get current values
     const response = await sheets.spreadsheets.values.get({
         spreadsheetId: SHEET_ID,
         range: 'Sheet1!A:H',
     });
     
     const rows = response.data.values || [];
-    let rowIndex = rows.findIndex(row => row[0] === weekRange);
-    if (rowIndex === -1) {
-        rowIndex = rows.length;
-    }
     
+    // Create new row
+    const newRow = [
+        weekRange,
+        metrics.totalMembers,
+        metrics.newMembers,
+        metrics.activeUsers,
+        metrics.messagesPosted,
+        metrics.reactions,
+        metrics.projectsShowcased,
+        metrics.projectLinks.join('\n')
+    ];
+
+    // Insert at top (after header)
     await sheets.spreadsheets.values.update({
         spreadsheetId: SHEET_ID,
-        range: `Sheet1!A${rowIndex + 1}:H${rowIndex + 1}`,
+        range: 'Sheet1!A2:H2',  // Always insert at row 2 (after header)
         valueInputOption: 'RAW',
         resource: {
-            values: [[
-                weekRange,
-                metrics.totalMembers,
-                metrics.newMembers,
-                metrics.activeUsers,
-                metrics.messagesPosted,
-                metrics.reactions,
-                metrics.projectsShowcased,
-                metrics.projectLinks.join('\n')
-            ]]
+            values: [newRow]
         }
     });
+
+    // If there was existing data, move it down
+    if (rows.length > 1) {  // If there's more than just the header
+        const existingRows = rows.slice(1);  // Skip header
+        await sheets.spreadsheets.values.update({
+            spreadsheetId: SHEET_ID,
+            range: `Sheet1!A3:H${rows.length + 1}`,
+            valueInputOption: 'RAW',
+            resource: {
+                values: existingRows
+            }
+        });
+    }
 }
 
 // Express Routes
