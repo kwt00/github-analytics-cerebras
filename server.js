@@ -123,28 +123,42 @@ function adjustToLocalTime(utcTimeStr) {
  }
  
  async function getAllAuditLogs(actionType, startDate) {
+    log(`Getting all audit logs for action ${actionType} since ${startDate.format()}`);
     const logs = [];
     let lastId = null;
+    let batchCount = 0;
     
     while (true) {
+        batchCount++;
         const batch = await getAuditLogs(actionType, lastId);
-        if (!batch || !batch.audit_log_entries.length) break;
+        log(`Fetched batch ${batchCount} with ${batch.audit_log_entries.length} entries`);
+        
+        if (!batch || !batch.audit_log_entries.length) {
+            log('No more entries found');
+            break;
+        }
         
         const relevantEntries = batch.audit_log_entries.filter(entry => {
             const entryTime = moment(entry.created_at);
-            return entryTime.isSameOrAfter(startDate);
+            const isRelevant = entryTime.isSameOrAfter(startDate);
+            log(`Entry from ${entryTime.format()} - Relevant: ${isRelevant}`);
+            return isRelevant;
         });
         
-        if (relevantEntries.length < batch.audit_log_entries.length) break;
+        if (relevantEntries.length < batch.audit_log_entries.length) {
+            log('Found entries before start date, stopping');
+            logs.push(...relevantEntries);
+            break;
+        }
         
         logs.push(...relevantEntries);
         lastId = batch.audit_log_entries[batch.audit_log_entries.length - 1].id;
         await new Promise(resolve => setTimeout(resolve, 100));
     }
     
+    log(`Found total of ${logs.length} relevant audit log entries`);
     return logs;
- }
-
+}
  // Member and message tracking functions
 async function getGuildInfo() {
     log('Fetching guild info');
@@ -193,16 +207,25 @@ async function getGuildInfo() {
  
  async function getNewMembers(startDate, endDate) {
     log(`Getting new members between ${startDate.format()} and ${endDate.format()}`);
-    const joinLogs = await getAllAuditLogs(AUDIT_LOG_ACTIONS.MEMBER_ADD, startDate);
     
-    const newMembers = joinLogs.filter(entry => {
-        const joinDate = moment(entry.created_at);
-        return joinDate.isSameOrAfter(startDate) && joinDate.isSameOrBefore(endDate);
-    });
-    
-    log(`New members in period: ${newMembers.length}`);
-    return newMembers.length;
- }
+    try {
+        const joinLogs = await getAllAuditLogs(AUDIT_LOG_ACTIONS.MEMBER_ADD, startDate);
+        log(`Found ${joinLogs.length} total join logs`);
+        
+        const newMembers = joinLogs.filter(entry => {
+            const joinDate = moment(entry.created_at);
+            const isInRange = joinDate.isSameOrAfter(startDate) && joinDate.isSameOrBefore(endDate);
+            log(`Member ${entry.target_id} joined at ${joinDate.format()} - In range: ${isInRange}`);
+            return isInRange;
+        });
+        
+        log(`Filtered to ${newMembers.length} members in date range`);
+        return newMembers.length;
+    } catch (error) {
+        log('Error getting new members from audit log:', error);
+        throw error;
+    }
+}
  
  async function getAllChannelMessages(channelId, startDate, endDate) {
     log(`Fetching messages for channel ${channelId}`);
