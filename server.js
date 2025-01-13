@@ -204,25 +204,50 @@ async function getGuildInfo() {
     
     return await getHistoricalMemberCount(endDate);
  }
+
+ async function getAllGuildMembers() {
+    let allMembers = [];
+    let after = '0';
+    
+    while (true) {
+        const endpoint = `/guilds/${GUILD_ID}/members?limit=1000${after !== '0' ? `&after=${after}` : ''}`;
+        const batch = await makeDiscordRequest(endpoint);
+        
+        if (!batch || batch.length === 0) break;
+        
+        allMembers = allMembers.concat(batch);
+        log(`Fetched ${batch.length} members, total so far: ${allMembers.length}`);
+        
+        if (batch.length < 1000) break;
+        
+        after = batch[batch.length - 1].user.id;
+        await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+    
+    return allMembers;
+}
  
  async function getNewMembers(startDate, endDate) {
     log(`Getting new members between ${startDate.format()} and ${endDate.format()}`);
     
     try {
-        const joinLogs = await getAllAuditLogs(AUDIT_LOG_ACTIONS.MEMBER_ADD, startDate);
-        log(`Found ${joinLogs.length} total join logs`);
+        const members = await getAllGuildMembers();
+        log(`Got ${members.length} total members`);
         
-        const newMembers = joinLogs.filter(entry => {
-            const joinDate = moment(entry.created_at);
-            const isInRange = joinDate.isSameOrAfter(startDate) && joinDate.isSameOrBefore(endDate);
-            log(`Member ${entry.target_id} joined at ${joinDate.format()} - In range: ${isInRange}`);
+        const newMembers = members.filter(member => {
+            if (!member.joined_at) return false;
+            const joinedAt = adjustToLocalTime(member.joined_at);
+            const isInRange = joinedAt.isSameOrAfter(startDate) && joinedAt.isSameOrBefore(endDate);
+            if (isInRange) {
+                log(`Found new member joined at ${joinedAt.format()}`);
+            }
             return isInRange;
         });
         
-        log(`Filtered to ${newMembers.length} members in date range`);
+        log(`Found ${newMembers.length} new members in date range`);
         return newMembers.length;
     } catch (error) {
-        log('Error getting new members from audit log:', error);
+        log('Error getting new members:', error);
         throw error;
     }
 }
