@@ -354,6 +354,8 @@ async function getProjectLinks(startDate, endDate) {
     });
 
     const links = Array.from(projectLinks);
+    console.log("LINKS FOUND:");
+    console.log(links);
     return links;
 }
 
