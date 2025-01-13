@@ -324,7 +324,8 @@ async function getAllChannelMessages(channelId, startDate, endDate) {
 
 async function getReactions(startDate, endDate) {
     const channels = await makeDiscordRequest(`/guilds/${GUILD_ID}/channels`);
-    const textChannels = channels.filter(channel => channel.type === 0);
+    // const textChannels = channels.filter(channel => channel.type === 0);
+    const textChannels = channels;
     let totalReactions = 0;
 
     for (const channel of textChannels) {
@@ -363,7 +364,8 @@ async function getProjectLinks(startDate, endDate) {
 
 async function getMessagesPosted(startDate, endDate) {
     const channels = await makeDiscordRequest(`/guilds/${GUILD_ID}/channels`);
-    const textChannels = channels.filter(channel => channel.type === 0);
+    // const textChannels = channels.filter(channel => channel.type === 0);
+    textChannels = channels;
     let totalMessages = 0;
 
     const deletedMessages = await getAllAuditLogs(AUDIT_LOG_ACTIONS.MESSAGE_DELETE, startDate);
