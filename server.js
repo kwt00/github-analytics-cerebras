@@ -347,7 +347,7 @@ async function getProjectLinks(startDate, endDate) {
     const projectLinks = new Set();
 
     messages.forEach(msg => {
-        console.log("POTENTIAL LINK? : "msg);
+        console.log("POTENTIAL LINK? : "+msg);
         if (!msg.deleted && !msg.content.toLowerCase().includes('.cerebras.ai')) {
             const links = msg.content.match(urlRegex) || [];
             links.forEach(link => projectLinks.add(link));
