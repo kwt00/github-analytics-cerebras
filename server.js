@@ -52,7 +52,7 @@ const HEADERS = {
 };
 // Helper Functions
 function adjustToLocalTime(utcTimeStr) {
-    return moment(utcTimeStr).tz(LOCAL_TIMEZONE);
+    return moment.utc(utcTimeStr).tz(LOCAL_TIMEZONE);
 }
 
 function parseDateRange(weekRange) {
@@ -99,10 +99,16 @@ async function makeDiscordRequest(endpoint, method = "GET", ignore403 = false) {
 }
 
 async function getTotalMembers(endDate) {
+    console.log(`Getting total members before: ${endDate.format()}`);
     const members = await getAllMembers();
-    return members.filter(member => 
-        adjustToLocalTime(member.joined_at).isSameOrBefore(endDate)
-    ).length;
+    const count = members.filter(member => {
+        const joinedAt = adjustToLocalTime(member.joined_at);
+        const isBeforeEnd = joinedAt.isSameOrBefore(endDate);
+        console.log(`Member ${member.user.id} joined at ${joinedAt.format()} - Included: ${isBeforeEnd}`);
+        return isBeforeEnd;
+    }).length;
+    console.log(`Found ${count} total members`);
+    return count;
 }
 
 async function getAllMembers() {
@@ -127,11 +133,16 @@ async function getAllMembers() {
 }
 
 async function getNewMembers(startDate, endDate) {
+    console.log(`Getting new members between ${startDate.format()} and ${endDate.format()}`);
     const members = await getAllMembers();
-    return members.filter(member => {
+    const count = members.filter(member => {
         const joinedAt = adjustToLocalTime(member.joined_at);
-        return joinedAt.isSameOrAfter(startDate) && joinedAt.isSameOrBefore(endDate);
+        const isInRange = joinedAt.isSameOrAfter(startDate) && joinedAt.isSameOrBefore(endDate);
+        console.log(`Member ${member.user.id} joined at ${joinedAt.format()} - Included: ${isInRange}`);
+        return isInRange;
     }).length;
+    console.log(`Found ${count} new members`);
+    return count;
 }
 
 async function getChannelMessages(channelId, startDate, endDate) {
@@ -252,30 +263,44 @@ async function updateGoogleSheet(weekRange, metrics) {
         metrics.projectLinks.join('\n')
     ];
 
-    // Insert at top (after header)
-    await sheets.spreadsheets.values.update({
-        spreadsheetId: SHEET_ID,
-        range: 'Sheet1!A2:H2',  // Always insert at row 2 (after header)
-        valueInputOption: 'RAW',
-        resource: {
-            values: [newRow]
-        }
-    });
+    // Check if date exists
+    const existingRowIndex = rows.findIndex(row => row[0] === weekRange);
 
-    // If there was existing data, move it down
-    if (rows.length > 1) {  // If there's more than just the header
-        const existingRows = rows.slice(1);  // Skip header
+    if (existingRowIndex !== -1) {
+        // Update existing row
         await sheets.spreadsheets.values.update({
             spreadsheetId: SHEET_ID,
-            range: `Sheet1!A3:H${rows.length + 1}`,
+            range: `Sheet1!A${existingRowIndex + 1}:H${existingRowIndex + 1}`,
             valueInputOption: 'RAW',
             resource: {
-                values: existingRows
+                values: [newRow]
             }
         });
+    } else {
+        // Insert at top (after header)
+        await sheets.spreadsheets.values.update({
+            spreadsheetId: SHEET_ID,
+            range: 'Sheet1!A2:H2',  // Always insert at row 2 (after header)
+            valueInputOption: 'RAW',
+            resource: {
+                values: [newRow]
+            }
+        });
+
+        // If there was existing data, move it down
+        if (rows.length > 1) {  // If there's more than just the header
+            const existingRows = rows.slice(1);  // Skip header
+            await sheets.spreadsheets.values.update({
+                spreadsheetId: SHEET_ID,
+                range: `Sheet1!A3:H${rows.length + 1}`,
+                valueInputOption: 'RAW',
+                resource: {
+                    values: existingRows
+                }
+            });
+        }
     }
 }
-
 // Express Routes
 app.get('/health', (req, res) => {
     res.json({ status: 'ok' });
