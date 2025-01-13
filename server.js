@@ -317,6 +317,7 @@ async function getAllChannelMessages(channelId, startDate, endDate) {
             break;
         }
     }
+    console.log(messages);
 
     return messages;
 }
