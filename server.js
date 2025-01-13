@@ -52,6 +52,14 @@ function log(message, data = null) {
    if (data) console.log(data);
 }
 
+async function getMemberLeaves(startDate, endDate) {
+    const leaves = await getAllAuditLogs(AUDIT_LOG_ACTIONS.MEMBER_REMOVE, startDate);
+    return leaves.filter(entry => {
+        const leaveDate = moment(entry.created_at);
+        return leaveDate.isSameOrAfter(startDate) && leaveDate.isSameOrBefore(endDate);
+    });
+ }
+
 
 // Time and request handling functions
 function adjustToLocalTime(utcTimeStr) {
@@ -123,42 +131,47 @@ function adjustToLocalTime(utcTimeStr) {
  }
  
  async function getAllAuditLogs(actionType, startDate) {
-    log(`Getting all audit logs for action ${actionType} since ${startDate.format()}`);
+    log(`Getting audit logs for action ${actionType} since ${startDate.format()}`);
     const logs = [];
     let lastId = null;
+    let rateLimitDelay = 100;
     let batchCount = 0;
     
     while (true) {
-        batchCount++;
-        const batch = await getAuditLogs(actionType, lastId);
-        log(`Fetched batch ${batchCount} with ${batch.audit_log_entries.length} entries`);
-        
-        if (!batch || !batch.audit_log_entries.length) {
-            log('No more entries found');
-            break;
-        }
-        
-        const relevantEntries = batch.audit_log_entries.filter(entry => {
-            const entryTime = moment(entry.created_at);
-            const isRelevant = entryTime.isSameOrAfter(startDate);
-            log(`Entry from ${entryTime.format()} - Relevant: ${isRelevant}`);
-            return isRelevant;
-        });
-        
-        if (relevantEntries.length < batch.audit_log_entries.length) {
-            log('Found entries before start date, stopping');
+        try {
+            batchCount++;
+            const batch = await getAuditLogs(actionType, lastId);
+            
+            if (!batch || !batch.audit_log_entries.length) break;
+            
+            log(`Processing audit log batch ${batchCount}: ${batch.audit_log_entries.length} entries`);
+            
+            const relevantEntries = batch.audit_log_entries.filter(entry => {
+                const entryTime = moment(entry.created_at);
+                return entryTime.isSameOrAfter(startDate);
+            });
+            
+            if (relevantEntries.length < batch.audit_log_entries.length) break;
+            
             logs.push(...relevantEntries);
-            break;
+            lastId = batch.audit_log_entries[batch.audit_log_entries.length - 1].id;
+            
+            // Adaptive rate limiting
+            await new Promise(resolve => setTimeout(resolve, rateLimitDelay));
+            if (batchCount % 5 === 0) rateLimitDelay += 50;
+            
+        } catch (error) {
+            if (error.message.includes('rate limited')) {
+                rateLimitDelay *= 2;
+                continue;
+            }
+            throw error;
         }
-        
-        logs.push(...relevantEntries);
-        lastId = batch.audit_log_entries[batch.audit_log_entries.length - 1].id;
-        await new Promise(resolve => setTimeout(resolve, 100));
     }
     
-    log(`Found total of ${logs.length} relevant audit log entries`);
+    log(`Found ${logs.length} relevant audit log entries`);
     return logs;
-}
+ }
  // Member and message tracking functions
 async function getGuildInfo() {
     log('Fetching guild info');
@@ -195,14 +208,43 @@ async function getGuildInfo() {
  }
  
  async function getTotalMembers(endDate) {
-    log(`Getting total members before: ${endDate.format()}`);
+    log(`Getting total members at: ${endDate.format()}`);
     
-    if (isWeekInProgress(endDate)) {
-        const guildInfo = await getGuildInfo();
-        return guildInfo.approximate_member_count;
+    try {
+        const allMembers = await getAllGuildMembers();
+        const leaveAuditLogs = await getMemberLeaves(moment(endDate).subtract(90, 'days'), endDate);
+        const leftMemberIds = new Set(leaveAuditLogs.map(log => log.target_id));
+        
+        log(`Processing ${allMembers.length} members and ${leaveAuditLogs.length} leave logs`);
+        
+        const count = allMembers.filter(member => {
+            if (!member.joined_at) return false;
+            
+            const joinedAt = adjustToLocalTime(member.joined_at);
+            const wasInServer = joinedAt.isSameOrBefore(endDate);
+            
+            // Check if member left before end date
+            const leftBeforeEndDate = leftMemberIds.has(member.user.id) && 
+                leaveAuditLogs.find(log => 
+                    log.target_id === member.user.id && 
+                    moment(log.created_at).isSameOrBefore(endDate)
+                );
+            
+            const shouldCount = wasInServer && !leftBeforeEndDate;
+            if (shouldCount) {
+                log(`Counting member ${member.user.id} (joined: ${joinedAt.format()})`);
+            }
+            
+            return shouldCount;
+        }).length;
+        
+        log(`Historical member count for ${endDate.format()}: ${count}`);
+        return count;
+        
+    } catch (error) {
+        log('Error getting total members:', error);
+        throw error;
     }
-    
-    return await getHistoricalMemberCount(endDate);
  }
 
  async function getAllGuildMembers() {
@@ -252,57 +294,77 @@ async function getGuildInfo() {
     }
 }
  
- async function getAllChannelMessages(channelId, startDate, endDate) {
+async function getAllChannelMessages(channelId, startDate, endDate) {
     log(`Fetching messages for channel ${channelId}`);
     const messages = [];
     let lastId = null;
     let batchCount = 0;
+    let rateLimitDelay = 100;
     
-    // Get deleted messages from audit log
-    const deletedMessages = await getAllAuditLogs(AUDIT_LOG_ACTIONS.MESSAGE_DELETE, startDate);
-    const deletedMessageIds = new Set(deletedMessages.map(entry => entry.target_id));
-
-    // Continue from previous getAllChannelMessages function
-   while (true) {
-    try {
-        const endpoint = `/channels/${channelId}/messages?limit=100${lastId ? `&before=${lastId}` : ''}`;
-        const batch = await makeDiscordRequest(endpoint, "GET", true);
-        
-        if (!batch || batch.length === 0) break;
-        
-        batchCount++;
-        log(`Processing message batch ${batchCount}: ${batch.length} messages`);
-        
-        let reachedEnd = false;
-        for (const msg of batch) {
-            const msgTime = adjustToLocalTime(msg.timestamp);
-            if (msgTime.isBefore(startDate)) {
-                reachedEnd = true;
-                break;
-            }
-            if (msgTime.isSameOrBefore(endDate)) {
-                // Include deleted messages from audit log
-                if (deletedMessageIds.has(msg.id)) {
-                    messages.push({ ...msg, deleted: true });
-                } else {
+    // Get deleted messages audit logs
+    const deletedMessageLogs = await getAllAuditLogs(AUDIT_LOG_ACTIONS.MESSAGE_DELETE, startDate);
+    const deletedMessages = new Map();
+    
+    deletedMessageLogs.forEach(log => {
+        if (log.options && log.options.channel_id === channelId) {
+            deletedMessages.set(log.target_id, {
+                deleteDate: moment(log.created_at),
+                originalContent: log.changes?.find(c => c.key === 'content')?.old || ''
+            });
+        }
+    });
+    
+    while (true) {
+        try {
+            const endpoint = `/channels/${channelId}/messages?limit=100${lastId ? `&before=${lastId}` : ''}`;
+            const batch = await makeDiscordRequest(endpoint, "GET", true);
+            
+            if (!batch || batch.length === 0) break;
+            
+            batchCount++;
+            log(`Processing message batch ${batchCount}: ${batch.length} messages`);
+            
+            let reachedEnd = false;
+            for (const msg of batch) {
+                const msgTime = adjustToLocalTime(msg.timestamp);
+                if (msgTime.isBefore(startDate)) {
+                    reachedEnd = true;
+                    break;
+                }
+                if (msgTime.isSameOrBefore(endDate)) {
+                    // Check if message was deleted
+                    if (deletedMessages.has(msg.id)) {
+                        const deleteInfo = deletedMessages.get(msg.id);
+                        msg.deleted = true;
+                        msg.deleteDate = deleteInfo.deleteDate;
+                        msg.originalContent = deleteInfo.originalContent;
+                    }
                     messages.push(msg);
                 }
             }
+            
+            if (reachedEnd) break;
+            lastId = batch[batch.length - 1].id;
+            
+            // Adaptive rate limiting
+            await new Promise(resolve => setTimeout(resolve, rateLimitDelay));
+            if (batchCount % 10 === 0) rateLimitDelay += 50; // Gradually slow down
+            
+        } catch (error) {
+            if (error.message.includes('rate limited')) {
+                rateLimitDelay *= 2; // Double delay on rate limit
+                log(`Increased rate limit delay to ${rateLimitDelay}ms`);
+                continue;
+            }
+            log(`Error fetching messages for channel ${channelId}`, { error: error.message });
+            break;
         }
-        
-        if (reachedEnd) break;
-        lastId = batch[batch.length - 1].id;
-        await new Promise(resolve => setTimeout(resolve, 100));
-        
-    } catch (error) {
-        log(`Error fetching messages for channel ${channelId}`, { error: error.message });
-        break;
     }
-}
+    
+    log(`Total messages found in channel ${channelId}: ${messages.length}`);
+    return messages;
+ }
 
-log(`Total messages found in channel ${channelId}: ${messages.length}`);
-return messages;
-}
 
 async function getReactions(startDate, endDate) {
 log('Calculating total reactions');
