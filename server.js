@@ -257,18 +257,20 @@ async function getAllGuildMembers() {
 }
 
 async function getNewMembers(startDate, endDate) {
+
     try {
-        // Get join audit logs for the period
-        const joinLogs = await getAllAuditLogs(AUDIT_LOG_ACTIONS.MEMBER_ADD, startDate);
-        
-        // Filter to just the joins in our time period
-        const joinsInPeriod = joinLogs.filter(log => {
-            const joinDate = moment(log.created_at);
-            return joinDate.isSameOrAfter(startDate) && joinDate.isSameOrBefore(endDate);
+        const members = await getAllGuildMembers();
+
+        const newMembers = members.filter(member => {
+            if (!member.joined_at) return false;
+            const joinedAt = adjustToLocalTime(member.joined_at);
+            const isInRange = joinedAt.isSameOrAfter(startDate) && joinedAt.isSameOrBefore(endDate);
+            if (isInRange) {
+            }
+            return isInRange;
         });
 
-        return joinsInPeriod.length;
-
+        return newMembers.length;
     } catch (error) {
         console.log('Error getting new members:', error);
         throw error;
