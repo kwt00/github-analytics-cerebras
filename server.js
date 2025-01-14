@@ -182,37 +182,58 @@ async function getHistoricalMemberCount(endDate) {
 }
 
 async function getTotalMembers(startDate, endDate) {
-
     try {
+        // Get current members and their join dates
         const allMembers = await getAllGuildMembers();
+        
+        // Get all leave logs up to endDate
         const leaveAuditLogs = await getMemberLeaves(startDate, endDate);
-        const leftMemberIds = new Set(leaveAuditLogs.map(log => log.target_id));
-
+        
+        // Create a map of member leaves with their timestamps
+        const memberLeaves = new Map();
+        leaveAuditLogs.forEach(log => {
+            memberLeaves.set(log.target_id, moment(log.created_at));
+        });
 
         const count = allMembers.filter(member => {
             if (!member.joined_at) return false;
 
             const joinedAt = adjustToLocalTime(member.joined_at);
-            const wasInServer = joinedAt.isSameOrBefore(endDate);
+            
+            // Check if they joined before or during the period
+            if (!joinedAt.isSameOrBefore(endDate)) {
+                return false;
+            }
 
-            const leftBeforeEndDate = leftMemberIds.has(member.user.id) &&
-                leaveAuditLogs.find(log =>
-                    log.target_id === member.user.id &&
-                    moment(log.created_at).isSameOrBefore(endDate)
-                );
+            // Check if they left during the period
+            const leaveDate = memberLeaves.get(member.user.id);
+            if (leaveDate && leaveDate.isSameOrBefore(endDate)) {
+                return false;
+            }
 
-            const shouldCount = wasInServer && !leftBeforeEndDate;
-
-            return shouldCount;
+            return true;
         }).length;
 
-        return count;
+        // Add members who left during the period but were there at the start
+        const additionalMembers = leaveAuditLogs.filter(log => {
+            const leaveDate = moment(log.created_at);
+            const member = allMembers.find(m => m.user.id === log.target_id);
+            
+            // If they're not in current members and left during period
+            return !member && 
+                   leaveDate.isSameOrAfter(startDate) && 
+                   leaveDate.isSameOrBefore(endDate);
+        }).length;
+
+        return count + additionalMembers;
 
     } catch (error) {
         console.log('Error getting total members:', error);
         throw error;
     }
 }
+
+
 
 async function getAllGuildMembers() {
     let allMembers = [];
