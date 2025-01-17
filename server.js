@@ -290,23 +290,6 @@ async function getNewMembers(startDate, endDate) {
     }
 }
 
-async function getAllChannelMessages(channelId, startDate, endDate) {
-    const messages = [];
-    let lastId = null;
-    let batchCount = 0;
-    let rateLimitDelay = 100;
-
-    const deletedMessageLogs = await getAllAuditLogs(AUDIT_LOG_ACTIONS.MESSAGE_DELETE, startDate);
-    const deletedMessages = new Map();
-
-    deletedMessageLogs.forEach(log => {
-        if (log.options && log.options.channel_id === channelId) {
-            deletedMessages.set(log.target_id, {
-                deleteDate: moment(log.created_at),
-                originalContent: log.changes?.find(c => c.key === 'content')?.old || ''
-            });
-        }
-    });
 
 async function getAllChannelMessages(channelId, startDate, endDate) {
     const messages = [];
