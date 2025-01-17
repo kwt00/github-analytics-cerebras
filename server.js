@@ -314,13 +314,6 @@ async function getAllChannelMessages(channelId, startDate, endDate) {
     let batchCount = 0;
     let rateLimitDelay = 100;
 
-    // Get channel info first to check type
-    const channelInfo = await makeDiscordRequest(`/channels/${channelId}`);
-    if (!channelInfo) {
-        console.log(`Could not get info for channel ${channelId}`);
-        return messages;
-    }
-
     // Get deleted message logs first
     const deletedMessageLogs = await getAllAuditLogs(AUDIT_LOG_ACTIONS.MESSAGE_DELETE, startDate);
     const deletedMessages = new Map();
@@ -385,70 +378,95 @@ async function getAllChannelMessages(channelId, startDate, endDate) {
     }
 
     // Get messages from the main channel
-    messages.push(...await fetchMessages(channelId));
+    try {
+        const channelMessages = await fetchMessages(channelId);
+        messages.push(...channelMessages);
+    } catch (error) {
+        console.log(`Error fetching main channel messages for ${channelId}`, { error: error.message });
+    }
 
-    // Only try to fetch threads if this is a text channel or forum channel
-    if (channelInfo.type === CHANNEL_TYPES.TEXT || channelInfo.type === CHANNEL_TYPES.FORUM) {
-        try {
-            // Get active threads
-            let threads = [];
-            
+    // Get thread list using a different endpoint based on channel type
+    try {
+        // First, get the channel info to determine its type
+        const channelInfo = await makeDiscordRequest(`/channels/${channelId}`, "GET", true);
+        
+        if (!channelInfo) {
+            console.log(`Channel ${channelId} not found or not accessible`);
+            return messages;
+        }
+
+        // Get active threads
+        if (channelInfo.type === CHANNEL_TYPES.TEXT || channelInfo.type === CHANNEL_TYPES.FORUM) {
             try {
                 const activeThreadsEndpoint = `/channels/${channelId}/threads/active`;
-                const activeThreadsResponse = await makeDiscordRequest(activeThreadsEndpoint, "GET", true);
-                if (activeThreadsResponse && activeThreadsResponse.threads) {
-                    threads.push(...activeThreadsResponse.threads);
+                const activeThreads = await makeDiscordRequest(activeThreadsEndpoint, "GET", true);
+                
+                if (activeThreads && activeThreads.threads) {
+                    for (const thread of activeThreads.threads) {
+                        try {
+                            const threadMessages = await fetchMessages(thread.id);
+                            messages.push(...threadMessages);
+                        } catch (threadError) {
+                            console.log(`Error fetching messages for thread ${thread.id}`, { error: threadError.message });
+                            continue;
+                        }
+                    }
                 }
-            } catch (error) {
-                if (!error.message.includes('404')) {
-                    console.log(`Error fetching active threads for channel ${channelId}:`, error);
-                }
+            } catch (activeThreadsError) {
+                console.log(`Error fetching active threads for channel ${channelId}`, { error: activeThreadsError.message });
             }
 
-            // Try to get archived threads if we have permission
+            // Get archived threads if we have permission
             try {
+                // Try to get archived public threads
                 const archivedPublicThreadsEndpoint = `/channels/${channelId}/threads/archived/public`;
-                const archivedPublicResponse = await makeDiscordRequest(archivedPublicThreadsEndpoint, "GET", true);
-                if (archivedPublicResponse && archivedPublicResponse.threads) {
-                    threads.push(...archivedPublicResponse.threads);
+                const publicThreads = await makeDiscordRequest(archivedPublicThreadsEndpoint, "GET", true);
+                
+                if (publicThreads && publicThreads.threads) {
+                    for (const thread of publicThreads.threads) {
+                        if (moment(thread.thread_metadata.creation_timestamp).isSameOrAfter(startDate)) {
+                            try {
+                                const threadMessages = await fetchMessages(thread.id);
+                                messages.push(...threadMessages);
+                            } catch (threadError) {
+                                console.log(`Error fetching messages for archived public thread ${thread.id}`, { error: threadError.message });
+                                continue;
+                            }
+                        }
+                    }
                 }
-            } catch (error) {
-                if (!error.message.includes('404')) {
-                    console.log(`Error fetching archived public threads for channel ${channelId}:`, error);
-                }
-            }
 
-            try {
+                // Try to get archived private threads
                 const archivedPrivateThreadsEndpoint = `/channels/${channelId}/threads/archived/private`;
-                const archivedPrivateResponse = await makeDiscordRequest(archivedPrivateThreadsEndpoint, "GET", true);
-                if (archivedPrivateResponse && archivedPrivateResponse.threads) {
-                    threads.push(...archivedPrivateResponse.threads);
+                const privateThreads = await makeDiscordRequest(archivedPrivateThreadsEndpoint, "GET", true);
+                
+                if (privateThreads && privateThreads.threads) {
+                    for (const thread of privateThreads.threads) {
+                        if (moment(thread.thread_metadata.creation_timestamp).isSameOrAfter(startDate)) {
+                            try {
+                                const threadMessages = await fetchMessages(thread.id);
+                                messages.push(...threadMessages);
+                            } catch (threadError) {
+                                console.log(`Error fetching messages for archived private thread ${thread.id}`, { error: threadError.message });
+                                continue;
+                            }
+                        }
+                    }
                 }
-            } catch (error) {
-                if (!error.message.includes('404')) {
-                    console.log(`Error fetching archived private threads for channel ${channelId}:`, error);
-                }
-            }
-
-            // Fetch messages from each thread
-            for (const thread of threads) {
-                // Only process threads that fall within our date range
-                const threadCreatedAt = moment(thread.thread_metadata?.create_timestamp || thread.created_at);
-                if (threadCreatedAt.isSameOrBefore(endDate)) {
-                    const threadMessages = await fetchMessages(thread.id);
-                    messages.push(...threadMessages);
-                }
-            }
-
-        } catch (error) {
-            if (!error.message.includes('404')) {
-                console.log(`Error processing threads for channel ${channelId}:`, error);
+            } catch (archivedThreadsError) {
+                console.log(`Error fetching archived threads for channel ${channelId}`, { error: archivedThreadsError.message });
             }
         }
+    } catch (error) {
+        console.log(`Error checking channel type for ${channelId}`, { error: error.message });
     }
 
     return messages;
 }
+
+
+
+    
 
 async function getReactions(startDate, endDate) {
     const channels = await makeDiscordRequest(`/guilds/${GUILD_ID}/channels`);
