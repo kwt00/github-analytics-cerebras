@@ -14,6 +14,19 @@ const GUILD_ID = process.env.GUILD_ID;
 const CHANNEL_ID = process.env.CHANNEL_ID;
 const SHEET_ID = process.env.SHEET_ID;
 
+const CHANNEL_TYPES = {
+    TEXT: 0,
+    PUBLIC_THREAD: 11,
+    PRIVATE_THREAD: 12,
+    FORUM: 15,
+    FORUM_POST: 11
+};
+
+function isMessageableChannel(channel) {
+    return channel.type === CHANNEL_TYPES.TEXT || 
+           channel.type === CHANNEL_TYPES.FORUM;
+}
+
 let GOOGLE_CREDENTIALS;
 try {
     GOOGLE_CREDENTIALS = process.env.GOOGLE_CREDENTIALS ?
@@ -295,62 +308,100 @@ async function getAllChannelMessages(channelId, startDate, endDate) {
         }
     });
 
-    while (true) {
-        try {
-            const endpoint = `/channels/${channelId}/messages?limit=100${lastId ? `&before=${lastId}` : ''}`;
-            const batch = await makeDiscordRequest(endpoint, "GET", true);
+    async function fetchMessages(channelOrThreadId) {
+        const channelMessages = [];
+        let messageLastId = null;
+        
+        while (true) {
+            try {
+                const endpoint = `/channels/${channelOrThreadId}/messages?limit=100${messageLastId ? `&before=${messageLastId}` : ''}`;
+                const batch = await makeDiscordRequest(endpoint, "GET", true);
 
-            if (!batch || batch.length === 0) break;
+                if (!batch || batch.length === 0) break;
 
-            batchCount++;
-
-            let reachedEnd = false;
-            for (const msg of batch) {
-                const msgTime = adjustToLocalTime(msg.timestamp);
-                if (msgTime.isBefore(startDate)) {
-                    reachedEnd = true;
-                    break;
-                }
-                if (msgTime.isSameOrBefore(endDate)) {
-                    if (deletedMessages.has(msg.id)) {
-                        const deleteInfo = deletedMessages.get(msg.id);
-                        msg.deleted = true;
-                        msg.deleteDate = deleteInfo.deleteDate;
-                        msg.originalContent = deleteInfo.originalContent;
+                let reachedEnd = false;
+                for (const msg of batch) {
+                    const msgTime = adjustToLocalTime(msg.timestamp);
+                    if (msgTime.isBefore(startDate)) {
+                        reachedEnd = true;
+                        break;
                     }
-                    messages.push(msg);
+                    if (msgTime.isSameOrBefore(endDate)) {
+                        if (deletedMessages.has(msg.id)) {
+                            const deleteInfo = deletedMessages.get(msg.id);
+                            msg.deleted = true;
+                            msg.deleteDate = deleteInfo.deleteDate;
+                            msg.originalContent = deleteInfo.originalContent;
+                        }
+                        channelMessages.push(msg);
+                    }
                 }
+
+                if (reachedEnd) break;
+                messageLastId = batch[batch.length - 1].id;
+
+                await new Promise(resolve => setTimeout(resolve, rateLimitDelay));
+                batchCount++;
+                if (batchCount % 10 === 0) rateLimitDelay += 50;
+
+            } catch (error) {
+                if (error.message.includes('rate limited')) {
+                    rateLimitDelay *= 2;
+                    console.log(`Increased rate limit delay to ${rateLimitDelay}ms`);
+                    continue;
+                }
+                console.log(`Error fetching messages for channel/thread ${channelOrThreadId}`, { error: error.message });
+                break;
             }
-
-            if (reachedEnd) break;
-            lastId = batch[batch.length - 1].id;
-
-            await new Promise(resolve => setTimeout(resolve, rateLimitDelay));
-            if (batchCount % 10 === 0) rateLimitDelay += 50;
-
-        } catch (error) {
-            if (error.message.includes('rate limited')) {
-                rateLimitDelay *= 2;
-                console.log(`Increased rate limit delay to ${rateLimitDelay}ms`);
-                continue;
-            }
-            console.log(`Error fetching messages for channel ${channelId}`, { error: error.message });
-            break;
         }
+        return channelMessages;
     }
-    console.log(messages);
+
+    messages.push(...await fetchMessages(channelId));
+
+    try {
+        const activeThreadsEndpoint = `/channels/${channelId}/threads/active`;
+        const activeThreads = await makeDiscordRequest(activeThreadsEndpoint, "GET", true);
+        
+        if (activeThreads && activeThreads.threads) {
+            for (const thread of activeThreads.threads) {
+                messages.push(...await fetchMessages(thread.id));
+            }
+        }
+
+        const archivedPublicThreadsEndpoint = `/channels/${channelId}/threads/archived/public`;
+        const archivedPrivateThreadsEndpoint = `/channels/${channelId}/threads/archived/private`;
+        
+        const [publicThreads, privateThreads] = await Promise.all([
+            makeDiscordRequest(archivedPublicThreadsEndpoint, "GET", true),
+            makeDiscordRequest(archivedPrivateThreadsEndpoint, "GET", true)
+        ]);
+
+        const archivedThreads = [
+            ...(publicThreads?.threads || []),
+            ...(privateThreads?.threads || [])
+        ];
+
+        for (const thread of archivedThreads) {
+            const threadCreatedAt = moment(thread.thread_metadata.creation_timestamp);
+            if (threadCreatedAt.isSameOrAfter(startDate)) {
+                messages.push(...await fetchMessages(thread.id));
+            }
+        }
+
+    } catch (error) {
+        console.log(`Error fetching threads for channel ${channelId}`, { error: error.message });
+    }
 
     return messages;
 }
 
-
 async function getReactions(startDate, endDate) {
     const channels = await makeDiscordRequest(`/guilds/${GUILD_ID}/channels`);
-    // const textChannels = channels.filter(channel => channel.type === 0);
-    const textChannels = channels;
+    const messageableChannels = channels.filter(isMessageableChannel);
     let totalReactions = 0;
 
-    for (const channel of textChannels) {
+    for (const channel of messageableChannels) {
         const messages = await getAllChannelMessages(channel.id, startDate, endDate);
         let channelReactions = 0;
         messages.forEach(msg => {
@@ -386,8 +437,7 @@ async function getProjectLinks(startDate, endDate) {
 
 async function getMessagesPosted(startDate, endDate) {
     const channels = await makeDiscordRequest(`/guilds/${GUILD_ID}/channels`);
-    // const textChannels = channels.filter(channel => channel.type === 0);
-    textChannels = channels;
+    const messageableChannels = channels.filter(isMessageableChannel);
     let totalMessages = 0;
 
     const deletedMessages = await getAllAuditLogs(AUDIT_LOG_ACTIONS.MESSAGE_DELETE, startDate);
@@ -396,12 +446,11 @@ async function getMessagesPosted(startDate, endDate) {
         return deleteDate.isSameOrAfter(startDate) && deleteDate.isSameOrBefore(endDate);
     });
 
-    for (const channel of textChannels) {
+    for (const channel of messageableChannels) {
         const messages = await getAllChannelMessages(channel.id, startDate, endDate);
         const validMessages = messages.filter(msg => !msg.deleted);
         totalMessages += validMessages.length;
     }
-
 
     totalMessages += deletedInPeriod.length;
 
@@ -410,7 +459,7 @@ async function getMessagesPosted(startDate, endDate) {
 
 async function getActiveUsers(startDate, endDate) {
     const channels = await makeDiscordRequest(`/guilds/${GUILD_ID}/channels`);
-    const textChannels = channels.filter(channel => channel.type === 0);
+    const messageableChannels = channels.filter(isMessageableChannel);
     const activeUsers = new Set();
 
     const memberUpdates = await getAllAuditLogs(AUDIT_LOG_ACTIONS.MEMBER_UPDATE, startDate);
@@ -423,7 +472,7 @@ async function getActiveUsers(startDate, endDate) {
         }
     });
 
-    for (const channel of textChannels) {
+    for (const channel of messageableChannels) {
         const messages = await getAllChannelMessages(channel.id, startDate, endDate);
         messages.forEach(msg => {
             if (!msg.deleted && msg.author) {
@@ -434,6 +483,7 @@ async function getActiveUsers(startDate, endDate) {
 
     return activeUsers.size;
 }
+
 
 async function updateGoogleSheet(weekRange, metrics) {
     console.log('Updating Google Sheet', metrics);
