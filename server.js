@@ -310,7 +310,6 @@ async function getAllChannelMessages(channelId, startDate, endDate) {
 
 async function getAllChannelMessages(channelId, startDate, endDate) {
     const messages = [];
-    let lastId = null;
     let batchCount = 0;
     let rateLimitDelay = 100;
 
@@ -463,7 +462,6 @@ async function getAllChannelMessages(channelId, startDate, endDate) {
 
     return messages;
 }
-
 
 
     
