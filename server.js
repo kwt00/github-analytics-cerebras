@@ -424,7 +424,7 @@ async function getReactions(startDate, endDate) {
 
 async function getProjectLinks(startDate, endDate) {
     const messages = await getAllChannelMessages(CHANNEL_ID, startDate, endDate);
-    const urlRegex = /(?<![@\w])(?:(?:https?|ftp):\/\/|www\.|(?!@)[-\w]+\.)[-\w@:%._\+~#=]{1,256}\.[a-z]{2,}\b(?:[-\w()@:%_\+.~#?&\/=]*)/gi;
+    const urlRegex = /(?<![@\w])(?!.*?@.*?\.)(?:(?:https?|ftp):\/\/|www\.|\b(?!(?:x\.{2,}))[a-z][\w-]+)[a-z0-9](?:\.(?:[a-z]{2,}|\d+))+(?::\d{2,5})?(?:[-\w\/?=&.~+#%@]*)?/gi;
     
     const projectLinks = new Set();
 
