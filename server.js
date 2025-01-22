@@ -424,7 +424,7 @@ async function getReactions(startDate, endDate) {
 
 async function getProjectLinks(startDate, endDate) {
     const messages = await getAllChannelMessages(CHANNEL_ID, startDate, endDate);
-    const urlRegex = /(?:(?:https?|ftp):\/\/)?[-\w@:%._\+~#=]{1,256}\.[a-z]{2,}\b(?:[-\w()@:%_\+.~#?&\/=]*)/gi;
+    const urlRegex = /(?<![@\w])(?:(?:https?|ftp):\/\/|www\.|(?!@)[-\w]+\.)[-\w@:%._\+~#=]{1,256}\.[a-z]{2,}\b(?:[-\w()@:%_\+.~#?&\/=]*)/gi;
     
     const projectLinks = new Set();
 
@@ -521,7 +521,7 @@ async function updateGoogleSheet(weekRange, metrics) {
     ];
 
     if (existingRowIndex !== -1) {
-        console.log(`Updating existing row at index ${existingRowIndex + 1}`);
+        // Update existing row
         await sheets.spreadsheets.values.update({
             spreadsheetId: SHEET_ID,
             range: `Sheet1!A${existingRowIndex + 1}:H${existingRowIndex + 1}`,
@@ -529,26 +529,35 @@ async function updateGoogleSheet(weekRange, metrics) {
             resource: { values: [newRow] }
         });
     } else {
-        console.log('Adding new row at top');
+        // Insert new row at position 2 (after header)
+        await sheets.spreadsheets.batchUpdate({
+            spreadsheetId: SHEET_ID,
+            resource: {
+                requests: [
+                    {
+                        insertDimension: {
+                            range: {
+                                sheetId: 0,  // Assuming Sheet1 has ID 0
+                                dimension: 'ROWS',
+                                startIndex: 1,  // After header
+                                endIndex: 2
+                            }
+                        }
+                    }
+                ]
+            }
+        });
+
+        // Update the newly inserted row with values
         await sheets.spreadsheets.values.update({
             spreadsheetId: SHEET_ID,
             range: 'Sheet1!A2:H2',
             valueInputOption: 'RAW',
             resource: { values: [newRow] }
         });
-
-        if (rows.length > 1) {
-            const existingRows = rows.slice(1);
-            await sheets.spreadsheets.values.update({
-                spreadsheetId: SHEET_ID,
-                range: `Sheet1!A3:H${rows.length + 1}`,
-                valueInputOption: 'RAW',
-                resource: { values: existingRows }
-            });
-        }
     }
-
 }
+
 
 app.post('/collect-analytics', async (req, res) => {
     res.json({ message: 'Analytics collection started' });
