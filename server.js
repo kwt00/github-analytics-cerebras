@@ -268,26 +268,26 @@ async function getAllGuildMembers() {
 }
 
 async function getNewMembers(startDate, endDate) {
-
     try {
-        const members = await getAllGuildMembers();
+        const joinLogs = await getAllAuditLogs(AUDIT_LOG_ACTIONS.MEMBER_ADD, startDate);
+        const joins = joinLogs.filter(entry => {
+            const joinDate = moment(entry.created_at);
+            return joinDate.isSameOrAfter(startDate) && joinDate.isSameOrBefore(endDate);
+        }).length;
 
-        const newMembers = members.filter(member => {
-            if (!member.joined_at) return false;
-            const joinedAt = adjustToLocalTime(member.joined_at);
-            const isInRange = joinedAt.isSameOrAfter(startDate) && joinedAt.isSameOrBefore(endDate);
-            if (isInRange) {
-            }
-            return isInRange;
-        });
+        const leaveLogs = await getAllAuditLogs(AUDIT_LOG_ACTIONS.MEMBER_REMOVE, startDate);
+        const leaves = leaveLogs.filter(entry => {
+            const leaveDate = moment(entry.created_at);
+            return leaveDate.isSameOrAfter(startDate) && leaveDate.isSameOrBefore(endDate);
+        }).length;
 
-        return newMembers.length;
+        return joins - leaves;
+
     } catch (error) {
         console.log('Error getting new members:', error);
         throw error;
     }
 }
-
 
 async function getThreads(channelId, startDate) {
     const threads = new Set();
