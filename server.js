@@ -280,8 +280,8 @@ async function getNewMembers(startDate, endDate) {
             return isInRange;
         });
 
-        console.log("TOTAL MEMBER SHIFT: " + newMembers.length - getMemberLeaves(startDate, endDate).length);
-        console.log("TOTAL MEMBER SHIFT: " + newMembers.length - getMemberLeaves(startDate, endDate).length);
+        console.log(newMembers.length - getMemberLeaves(startDate, endDate).length);
+        console.log("TOTAL MEMBER SHIFT ");
         
         return newMembers.length;
     } catch (error) {
