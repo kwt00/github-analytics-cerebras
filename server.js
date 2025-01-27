@@ -126,15 +126,16 @@ async function getAllAuditLogs(actionType, startDate) {
 
             if (!batch || !batch.audit_log_entries.length) break;
 
-
             const relevantEntries = batch.audit_log_entries.filter(entry => {
                 const entryTime = moment(entry.created_at);
                 return entryTime.isSameOrAfter(startDate);
             });
 
-            if (relevantEntries.length < batch.audit_log_entries.length) break;
-
             logs.push(...relevantEntries);
+
+            // Only break if this batch had no relevant entries at all
+            if (relevantEntries.length === 0) break;
+
             lastId = batch.audit_log_entries[batch.audit_log_entries.length - 1].id;
 
             await new Promise(resolve => setTimeout(resolve, rateLimitDelay));
@@ -151,7 +152,6 @@ async function getAllAuditLogs(actionType, startDate) {
 
     return logs;
 }
-
 
 async function getGuildInfo() {
     return await makeDiscordRequest(`/guilds/${GUILD_ID}?with_counts=true`);
