@@ -260,40 +260,43 @@ async function getAllGuildMembers() {
 
 
 async function getMemberLeaves(startDate, endDate) {
-    try {
-        const leaves = await getAllAuditLogs(AUDIT_LOG_ACTIONS.MEMBER_REMOVE, startDate);
-
-        const leavesInPeriod = leaves.filter(entry => {
-            const leaveDate = moment(entry.created_at);
-            return leaveDate.isSameOrAfter(startDate) && leaveDate.isSameOrBefore(endDate);
-        });
-
-        return leavesInPeriod.length;
-
-    } catch (error) {
-        console.log('Error getting member leaves:', error);
-        throw error;
-    }
+    const leaves = await getAllAuditLogs(AUDIT_LOG_ACTIONS.MEMBER_REMOVE, startDate);
+    return leaves.filter(entry => {
+        const leaveDate = moment(entry.created_at);
+        return leaveDate.isSameOrAfter(startDate) && leaveDate.isSameOrBefore(endDate);
+    });
 }
 
 
 async function getNewMembers(startDate, endDate) {
     try {
-        const members = await getAllGuildMembers();
-
-        const newMembers = members.filter(member => {
-            if (!member.joined_at) return false;
-            const joinedAt = adjustToLocalTime(member.joined_at);
-            const isInRange = joinedAt.isSameOrAfter(startDate) && joinedAt.isSameOrBefore(endDate);
-            if (isInRange) {
-            }
-            return isInRange;
+        const joinLogs = await getAllAuditLogs(AUDIT_LOG_ACTIONS.MEMBER_ADD, startDate);
+        const joins = joinLogs.filter(entry => {
+            const joinDate = moment(entry.created_at);
+            return joinDate.isSameOrAfter(startDate) && joinDate.isSameOrBefore(endDate);
         });
 
-        console.log(newMembers.length - getMemberLeaves(startDate, endDate).length);
-        console.log("TOTAL MEMBER SHIFT ");
-        
-        return newMembers.length;
+
+        const leaveAuditLogs = await getMemberLeaves(startDate, endDate);
+
+        const memberJoins = new Map();
+        joins.forEach(log => {
+            memberJoins.set(log.target_id, moment(log.created_at));
+        });
+
+        const memberLeaves = new Map();
+        leaveAuditLogs.forEach(log => {
+            memberLeaves.set(log.target_id, moment(log.created_at));
+        });
+
+        let netJoins = joins.length;
+        memberLeaves.forEach((leaveTime, userId) => {
+            if (memberJoins.has(userId)) {
+                netJoins--;
+            }
+        });
+
+        return netJoins;
     } catch (error) {
         console.log('Error getting new members:', error);
         throw error;
