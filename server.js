@@ -279,7 +279,7 @@ async function getNewMembers(startDate, endDate) {
             }
             return isInRange;
         });
-
+        console.log("TOTAL MEMBER SHIFT: " + newMembers.length - getMemberLeaves(startDate, endDate).length)
         return newMembers.length;
     } catch (error) {
         console.log('Error getting new members:', error);
