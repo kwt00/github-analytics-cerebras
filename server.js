@@ -51,15 +51,6 @@ const HEADERS = {
     'X-RateLimit-Precision': 'millisecond',
 };
 
-async function getMemberLeaves(startDate, endDate) {
-    const leaves = await getAllAuditLogs(AUDIT_LOG_ACTIONS.MEMBER_REMOVE, startDate);
-    return leaves.filter(entry => {
-        const leaveDate = moment(entry.created_at);
-        return leaveDate.isSameOrAfter(startDate) && leaveDate.isSameOrBefore(endDate);
-    });
-}
-
-
 
 function adjustToLocalTime(utcTimeStr) {
     const utcTime = moment.utc(utcTimeStr);
@@ -266,6 +257,25 @@ async function getAllGuildMembers() {
 
     return allMembers;
 }
+
+
+async function getMemberLeaves(startDate, endDate) {
+    try {
+        const leaves = await getAllAuditLogs(AUDIT_LOG_ACTIONS.MEMBER_REMOVE, startDate);
+
+        const leavesInPeriod = leaves.filter(entry => {
+            const leaveDate = moment(entry.created_at);
+            return leaveDate.isSameOrAfter(startDate) && leaveDate.isSameOrBefore(endDate);
+        });
+
+        return leavesInPeriod.length;
+
+    } catch (error) {
+        console.log('Error getting member leaves:', error);
+        throw error;
+    }
+}
+
 
 async function getNewMembers(startDate, endDate) {
     try {
