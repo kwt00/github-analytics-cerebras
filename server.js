@@ -9,10 +9,10 @@ app.use(cors());
 app.use(express.json());
 
 const DISCORD_API_BASE = "https://discord.com/api/v10";
-const TOKEN = process.env.TOKEN;
-const GUILD_ID = process.env.GUILD_ID;
-const CHANNEL_ID = process.env.CHANNEL_ID;
-const SHEET_ID = process.env.SHEET_ID;
+const TOKEN = process.env.xTOKEN;
+const GUILD_ID = process.env.xGUILD_ID;
+const CHANNEL_ID = process.env.xCHANNEL_ID;
+const SHEET_ID = process.env.xSHEET_ID;
 
 const CHANNEL_TYPES = {
     TEXT: 0,
@@ -29,8 +29,8 @@ function isMessageableChannel(channel) {
 
 let GOOGLE_CREDENTIALS;
 try {
-    GOOGLE_CREDENTIALS = process.env.GOOGLE_CREDENTIALS ?
-        JSON.parse(process.env.GOOGLE_CREDENTIALS) : null;
+    GOOGLE_CREDENTIALS = process.env.xGOOGLE_CREDENTIALS ?
+        JSON.parse(process.env.xGOOGLE_CREDENTIALS) : null;
 } catch (error) {
     throw new Error(`Invalid GOOGLE_CREDENTIALS: ${error.message}`);
 }
@@ -424,7 +424,7 @@ async function getReactions(startDate, endDate) {
 
 async function getProjectLinks(startDate, endDate) {
     const messages = await getAllChannelMessages(CHANNEL_ID, startDate, endDate);
-    const urlRegex = /(?<![@\w])(?!.*?@.*?\.)(?:(?:https?|ftp):\/\/|www\.|\b(?!(?:x\.{2,}))[a-z][\w-]+)[a-z0-9](?:\.(?:[a-z]{2,}|\d+))+(?::\d{2,5})?(?:[-\w\/?=&.~+#%@]*)?/gi;
+    const urlRegex = /(?:https?:\/\/)?(?:[\w-]+\.)+[\w-]+(?:\/[^\s]*)?/gi;
     
     const projectLinks = new Set();
 
