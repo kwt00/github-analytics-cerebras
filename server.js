@@ -275,11 +275,8 @@ async function getNewMembers(startDate, endDate) {
             return joinDate.isSameOrAfter(startDate) && joinDate.isSameOrBefore(endDate);
         }).length;
 
-        const leaveLogs = await getAllAuditLogs(AUDIT_LOG_ACTIONS.MEMBER_REMOVE, startDate);
-        const leaves = leaveLogs.filter(entry => {
-            const leaveDate = moment(entry.created_at);
-            return leaveDate.isSameOrAfter(startDate) && leaveDate.isSameOrBefore(endDate);
-        }).length;
+        const leaveLogs = await getMemberLeaves(startDate, endDate);
+        const leaves = leaveLogs.length;
 
         return joins - leaves;
 
