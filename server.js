@@ -274,29 +274,14 @@ async function getNewMembers(startDate, endDate) {
         const joins = joinLogs.filter(entry => {
             const joinDate = moment(entry.created_at);
             return joinDate.isSameOrAfter(startDate) && joinDate.isSameOrBefore(endDate);
-        });
+        }).length;
 
+        const leaves = await getMemberLeaves(startDate, endDate);
+        console.log("Joins - leaves");
+        console.log(joins);
+        console.log(leaves);
+        return joins - leaves.length;
 
-        const leaveAuditLogs = await getMemberLeaves(startDate, endDate);
-
-        const memberJoins = new Map();
-        joins.forEach(log => {
-            memberJoins.set(log.target_id, moment(log.created_at));
-        });
-
-        const memberLeaves = new Map();
-        leaveAuditLogs.forEach(log => {
-            memberLeaves.set(log.target_id, moment(log.created_at));
-        });
-
-        let netJoins = joins.length;
-        memberLeaves.forEach((leaveTime, userId) => {
-            if (memberJoins.has(userId)) {
-                netJoins--;
-            }
-        });
-
-        return netJoins;
     } catch (error) {
         console.log('Error getting new members:', error);
         throw error;
