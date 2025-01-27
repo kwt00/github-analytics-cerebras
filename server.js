@@ -260,20 +260,13 @@ async function getAllGuildMembers() {
 
 
 async function getMemberLeaves(startDate, endDate) {
-    console.log("Getting leaves between:", startDate.format(), "and", endDate.format());
-    
     const leaves = await getAllAuditLogs(AUDIT_LOG_ACTIONS.MEMBER_REMOVE, startDate);
-    console.log("Raw leave audit logs:", leaves);
-    
-    const filtered = leaves.filter(entry => {
-        const leaveDate = moment(entry.created_at);
-        console.log("Checking leave date:", leaveDate.format(), "against range:", 
-            startDate.format(), "-", endDate.format());
+    return leaves.filter(entry => {
+        // Convert Discord snowflake ID to timestamp
+        const timestamp = Number(BigInt(entry.id) >> 22n) + 1420070400000;
+        const leaveDate = moment(timestamp);
         return leaveDate.isSameOrAfter(startDate) && leaveDate.isSameOrBefore(endDate);
     });
-    console.log("Filtered leaves:", filtered);
-    
-    return filtered;
 }
 
 
